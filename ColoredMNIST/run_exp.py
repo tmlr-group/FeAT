@@ -107,7 +107,7 @@ def main(flags):
             flags.penalty_anneal_iters, flags.penalty_weight, \
             flags.anneal_val, flags.lr, \
             flags.l2_regularizer_weight, flags.freeze_featurizer, flags.eval_steps, flags.verbose, ]
-        if flags.methods in ['vrex', 'iga','irm','fishr','gm','lff','erm','dro','ifeat','feat']:
+        if flags.methods in ['vrex', 'iga','irm','fishr','gm','lff','erm','dro','ifeat','feat','irmx','ibirm']:
             res = train_func(*params)
         elif flags.methods in ['clove']:
             hparams = {'batch_size': flags.batch_size, 'kernel_scale': flags.kernel_scale}
