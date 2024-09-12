@@ -448,6 +448,135 @@ def irm_train(mlp, topmlp, steps, envs, test_envs, lossf, \
     
     return (train_acc, train_loss, test_worst_acc, test_worst_loss), logs
 
+def ibirm_train(mlp, topmlp, steps, envs, test_envs, lossf, \
+    penalty_anneal_iters, penalty_term_weight, anneal_val, \
+    lr,l2_regularizer_weight, freeze_featurizer=False, verbose=True, eval_steps= 5,hparams={}):
+    if freeze_featurizer:
+        optimizer = optimizer = optim.Adam( [var for var in topmlp.parameters()],  lr=lr) 
+        for param in mlp.parameters():
+            param.requires_grad = False 
+       
+    else:
+        optimizer = optimizer = optim.Adam([var for var in mlp.parameters()] + \
+            [var for var in topmlp.parameters()],  lr=lr) 
+    
+    logs = []
+    for step in range(steps):
+
+
+        envs_logits = []
+        envs_y = []
+        erm_loss = 0
+        ib_penalty = 0
+        scale = torch.tensor([1.])[0].cuda().requires_grad_()
+        for env in envs:
+            logits = topmlp(mlp(env['images'])) * scale
+            env['nll'] = lossf(logits, env['labels'])
+            env['acc'] = mean_accuracy(logits, env['labels'])
+            envs_logits.append(logits)
+            envs_y.append(env['labels'])
+            erm_loss += env['nll']
+            ib_penalty += feats.var(dim=0).mean()
+         
+        train_penalty = IRM_penalty(envs_logits, envs_y,scale, lossf)+ib_penalty
+
+        loss = erm_loss.clone()
+
+
+        weight_norm = 0
+        for w in [var for var in mlp.parameters()] + [var for var in topmlp.parameters()]:
+            weight_norm += w.norm().pow(2)
+
+        loss += l2_regularizer_weight * weight_norm
+
+
+        penalty_weight = (penalty_term_weight 
+                if step >= penalty_anneal_iters else anneal_val)
+        loss += penalty_weight * train_penalty
+        if penalty_weight > 1.0:
+            # Rescale the entire loss to keep gradients in a reasonable range
+            loss /= penalty_weight
+        
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        if step % eval_steps == 0:
+            train_loss, train_acc, test_worst_loss, test_worst_acc = \
+            validation(topmlp, mlp, envs, test_envs, lossf)
+            log = [np.int32(step), train_loss, train_acc,\
+                train_penalty.detach().cpu().numpy(),test_worst_loss, test_worst_acc]
+            logs.append(log)
+            if verbose:
+                pretty_print(*log)
+    
+    return (train_acc, train_loss, test_worst_acc, test_worst_loss), logs
+
+
+def irmx_train(mlp, topmlp, steps, envs, test_envs, lossf, \
+    penalty_anneal_iters, penalty_term_weight, anneal_val, \
+    lr,l2_regularizer_weight, freeze_featurizer=False, verbose=True, eval_steps= 5,hparams={}):
+    if freeze_featurizer:
+        optimizer = optimizer = optim.Adam( [var for var in topmlp.parameters()],  lr=lr) 
+        for param in mlp.parameters():
+            param.requires_grad = False 
+       
+    else:
+        optimizer = optimizer = optim.Adam([var for var in mlp.parameters()] + \
+            [var for var in topmlp.parameters()],  lr=lr) 
+    
+    logs = []
+    for step in range(steps):
+
+
+        envs_logits = []
+        envs_y = []
+        erm_loss = 0
+        scale = torch.tensor([1.])[0].cuda().requires_grad_()
+        erm_losses = []
+        for env in envs:
+            logits = topmlp(mlp(env['images'])) * scale
+            env['nll'] = lossf(logits, env['labels'])
+            env['acc'] = mean_accuracy(logits, env['labels'])
+            envs_logits.append(logits)
+            envs_y.append(env['labels'])
+            erm_loss += env['nll']
+            erm_losses.append(env['nll'])
+
+         
+        train_penalty = IRM_penalty(envs_logits, envs_y,scale, lossf)+torch.stack(erm_losses).var()
+
+        loss = erm_loss.clone()
+
+
+        weight_norm = 0
+        for w in [var for var in mlp.parameters()] + [var for var in topmlp.parameters()]:
+            weight_norm += w.norm().pow(2)
+
+        loss += l2_regularizer_weight * weight_norm
+
+
+        penalty_weight = (penalty_term_weight 
+                if step >= penalty_anneal_iters else anneal_val)
+        loss += penalty_weight * train_penalty
+        if penalty_weight > 1.0:
+            # Rescale the entire loss to keep gradients in a reasonable range
+            loss /= penalty_weight
+        
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        if step % eval_steps == 0:
+            train_loss, train_acc, test_worst_loss, test_worst_acc = \
+            validation(topmlp, mlp, envs, test_envs, lossf)
+            log = [np.int32(step), train_loss, train_acc,\
+                train_penalty.detach().cpu().numpy(),test_worst_loss, test_worst_acc]
+            logs.append(log)
+            if verbose:
+                pretty_print(*log)
+    
+    return (train_acc, train_loss, test_worst_acc, test_worst_loss), logs
+
+
 def clove_train(mlp, topmlp, steps, envs, test_envs, lossf, \
     penalty_anneal_iters, penalty_term_weight, anneal_val, \
     lr,l2_regularizer_weight,freeze_featurizer=False, verbose=True,eval_steps=5,hparams={}):
@@ -949,7 +1078,7 @@ def syn_train(mlp, topmlp, steps, envs, test_envs, lossf, \
     
     return (train_acc, train_loss, test_worst_acc, test_worst_loss), logs
 
-def ifat_train(mlp, topmlp, steps, envs, test_envs, lossf, \
+def ifeat_train(mlp, topmlp, steps, envs, test_envs, lossf, \
     penalty_anneal_iters, penalty_term_weight, anneal_val, \
     lr,l2_regularizer_weight, freeze_featurizer=False, eval_steps= 5, verbose=True,hparams={}):
 
@@ -1076,5 +1205,5 @@ def ifat_train(mlp, topmlp, steps, envs, test_envs, lossf, \
     lr,l2_regularizer_weight, freeze_featurizer=freeze_featurizer, eval_steps=1, verbose=True,hparams=hparams)
 
 def get_train_func(methods):
-    assert methods in ['rsc', 'vrex', 'iga','sd','irm','clove','fishr','gm','lff','erm','dro','syn','ifat','fat']
+    assert methods in ['rsc', 'vrex', 'iga','sd','irm','clove','fishr','gm','lff','erm','dro','syn','ifeat','feat','irmx','ibirm']
     return eval("%s_train" % methods)
